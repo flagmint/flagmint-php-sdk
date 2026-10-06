@@ -20,4 +20,4 @@ Lease `expiresAt` is the fail-closed source of truth. Redis may set a safety TTL
 
 ## Custom adapter example
 
-See [`packages/php-sdk/examples/custom-cache`](../packages/php-sdk/examples/custom-cache).
+See [`examples/custom-cache`](../examples/custom-cache).

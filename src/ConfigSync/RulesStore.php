@@ -176,10 +176,11 @@ final class RulesStore
         $versionMismatch = $leaseVersion !== $this->state->version;
         $next = $this->state->clone();
         $next->expiresAt = (int) ($action['expiresAt'] ?? $next->expiresAt);
-        $next->ready = true;
+
         if (count($next->flags) === 0 || $versionMismatch) {
             $next->needsFullConfig = true;
         }
+        $next->ready = $this->state->ready || count($next->flags) > 0;
         $this->state = $next;
 
         return ['ok' => true];
@@ -283,6 +284,8 @@ final class RulesStore
         }
 
         $envelopeExpires = (int) ($action['expiresAt'] ?? $this->state->expiresAt);
+        // Snapshot so a mid-batch failure does not leave a partial version applied.
+        $before = $this->state;
         foreach ($action['items'] ?? [] as $step) {
             if (!is_array($step)) {
                 continue;
@@ -291,14 +294,16 @@ final class RulesStore
             $step['expiresAt'] = $envelopeExpires;
             $result = $this->reduce($step, $now);
             if (!($result['ok'] ?? false)) {
+                $this->state = $before->clone();
+                $this->state->needsFullConfig = true;
+
                 return $result;
             }
         }
 
         if ($this->state->version !== $toVersion) {
-            $next = $this->state->clone();
-            $next->needsFullConfig = true;
-            $this->state = $next;
+            $this->state = $before->clone();
+            $this->state->needsFullConfig = true;
 
             return ['ok' => false, 'reason' => 'version_gap'];
         }

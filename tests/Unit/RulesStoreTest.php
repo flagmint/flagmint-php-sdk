@@ -82,6 +82,37 @@ final class RulesStoreTest extends TestCase
         $this->assertFalse($store->getState()->ready);
     }
 
+    public function testDeltasBatchRollsBackOnStepFailure(): void
+    {
+        $store = new RulesStore();
+        $store->reduce($this->fixture('config/full_config.json'));
+        $this->assertTrue($store->getFlag('new-checkout')['is_active']);
+
+        $goodStep = $this->fixture('config/delta_upsert.json');
+        unset($goodStep['type'], $goodStep['expiresAt']);
+        $badStep = [
+            'fromVersion' => 99,
+            'toVersion' => 100,
+            'upserts' => [],
+            'deletes' => [],
+            'segments' => [],
+        ];
+
+        $result = $store->reduce([
+            'type' => 'deltas',
+            'fromVersion' => 3,
+            'toVersion' => 100,
+            'expiresAt' => 4102444800000,
+            'items' => [$goodStep, $badStep],
+        ]);
+
+        $this->assertFalse($result['ok']);
+        $this->assertSame('version_gap', $result['reason']);
+        $this->assertSame(3, $store->getState()->version);
+        $this->assertTrue($store->getFlag('new-checkout')['is_active']);
+        $this->assertTrue($store->getState()->needsFullConfig);
+    }
+
     /**
      * @return array<string, mixed>
      */

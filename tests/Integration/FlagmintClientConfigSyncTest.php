@@ -130,6 +130,66 @@ final class FlagmintClientConfigSyncTest extends TestCase
         $this->assertNotEmpty($errors);
     }
 
+    public function testRefreshDoesNotThrowOnHandshakeFailure(): void
+    {
+        $errors = [];
+        $http = new class implements \Psr\Http\Client\ClientInterface {
+            public function sendRequest(\Psr\Http\Message\RequestInterface $request): \Psr\Http\Message\ResponseInterface
+            {
+                throw new \RuntimeException('connection reset');
+            }
+        };
+        $factory = new HttpFactory();
+        $client = new FlagmintClient([
+            'apiKey' => 'fm_test_key',
+            'httpClient' => $http,
+            'requestFactory' => $factory,
+            'streamFactory' => $factory,
+            'restEndpoint' => 'https://example.test',
+            'handshakeEndpoint' => 'https://example.test/auth/asl-handshake',
+            'onError' => static function (array $err) use (&$errors): void {
+                $errors[] = $err;
+            },
+        ]);
+
+        $client->refresh();
+        $this->assertNotEmpty($errors);
+        $this->assertSame('ERR_NETWORK', $errors[0]['code']);
+    }
+
+    public function testFlushEventsRebuffersOnFailure(): void
+    {
+        $full = $this->fixture('config/full_config.json');
+        $inner = new MockFlagmintHttp([$full]);
+        $http = new class ($inner) implements \Psr\Http\Client\ClientInterface {
+            public function __construct(private readonly MockFlagmintHttp $inner)
+            {
+            }
+
+            public function sendRequest(\Psr\Http\Message\RequestInterface $request): \Psr\Http\Message\ResponseInterface
+            {
+                if (str_contains($request->getUri()->getPath(), '/evaluator/events')) {
+                    return new \GuzzleHttp\Psr7\Response(500, [], '{"error":"boom"}');
+                }
+
+                return $this->inner->sendRequest($request);
+            }
+        };
+        $factory = new HttpFactory();
+        $client = new FlagmintClient([
+            'apiKey' => 'fm_test_key',
+            'httpClient' => $http,
+            'requestFactory' => $factory,
+            'streamFactory' => $factory,
+            'restEndpoint' => 'https://example.test',
+            'handshakeEndpoint' => 'https://example.test/auth/asl-handshake',
+        ]);
+        $client->ready();
+        $client->track('new-checkout', ['action' => 'click']);
+        $this->assertFalse($client->flushEvents());
+        $this->assertSame(1, $client->getEventBuffer()->count());
+    }
+
     /**
      * @return array<string, mixed>
      */

@@ -59,4 +59,45 @@ final class EvaluatorTest extends TestCase
 
         $this->assertSame('fallback', $value);
     }
+
+    public function testVariantRolloutCoercesToFlagType(): void
+    {
+        $evaluator = new Evaluator();
+        $flag = [
+            'key' => 'hero-title',
+            'type' => 'string',
+            'is_active' => true,
+            'default_value' => null,
+            'targeting_rules' => [],
+            'variations' => [
+                ['id' => 'a', 'value' => 42],
+                ['id' => 'b', 'value' => 7],
+            ],
+            'rollouts' => [
+                'r1' => [
+                    'strategy' => 'variant',
+                    'salt' => 's',
+                    'variants' => [
+                        ['variation_id' => 'a', 'weight' => 100],
+                    ],
+                ],
+            ],
+        ];
+
+        $value = $evaluator->evaluate($flag, ['kind' => 'user', 'key' => 'u1']);
+        $this->assertSame('42', $value);
+        $this->assertIsString($value);
+
+        $numberFlag = $flag;
+        $numberFlag['type'] = 'number';
+        $numberFlag['default_value'] = null;
+        $numberFlag['rollouts'] = [
+            'r1' => [
+                'strategy' => 'variant',
+                'salt' => 's',
+                'variants' => [],
+            ],
+        ];
+        $this->assertSame(0, $evaluator->evaluate($numberFlag, ['kind' => 'user', 'key' => 'u1']));
+    }
 }

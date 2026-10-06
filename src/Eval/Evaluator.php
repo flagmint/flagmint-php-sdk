@@ -144,7 +144,10 @@ final class Evaluator
 
         return match ($strategy) {
             'percentage' => $this->percentageRollout($rollout, $key, $salt, $type, $default),
-            'variant' => $this->variantRollout($rollout, $key, $salt, $variationsById, $default),
+            'variant' => self::coerce(
+                $this->variantRollout($rollout, $key, $salt, $variationsById, $default),
+                $type,
+            ),
             default => self::coerce($default, $type),
         };
     }

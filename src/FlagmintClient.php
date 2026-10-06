@@ -191,41 +191,45 @@ final class FlagmintClient
             return;
         }
 
-        $this->handshake();
-        $sinceVersion = $this->rulesStore->getState()->needsFullConfig
-            ? null
-            : $this->rulesStore->getState()->version;
+        try {
+            $this->handshake();
+            $sinceVersion = $this->rulesStore->getState()->needsFullConfig
+                ? null
+                : $this->rulesStore->getState()->version;
 
-        $query = ['sessionId' => $this->sessionId];
-        if ($sinceVersion !== null && $sinceVersion > 0) {
-            $query['sinceVersion'] = (string) $sinceVersion;
-        }
-        $url = $this->restEndpoint . '/evaluator/v2/flags/config?' . http_build_query($query);
+            $query = ['sessionId' => $this->sessionId];
+            if ($sinceVersion !== null && $sinceVersion > 0) {
+                $query['sinceVersion'] = (string) $sinceVersion;
+            }
+            $url = $this->restEndpoint . '/evaluator/v2/flags/config?' . http_build_query($query);
 
-        $response = $this->transport->request('GET', $url, [
-            'x-api-key' => $this->apiKey,
-            'Accept' => 'application/json',
-        ]);
+            $response = $this->transport->request('GET', $url, [
+                'x-api-key' => $this->apiKey,
+                'Accept' => 'application/json',
+            ]);
 
-        if ($response['status'] === 401 || $response['status'] === 403) {
-            $this->emitError(ErrorCode::AUTH, 'Config refresh unauthorized: HTTP ' . $response['status']);
+            if ($response['status'] === 401 || $response['status'] === 403) {
+                $this->emitError(ErrorCode::AUTH, 'Config refresh unauthorized: HTTP ' . $response['status']);
 
-            return;
-        }
-        if ($response['status'] === 429) {
-            $this->emitError(ErrorCode::RATE_LIMITED, 'Config refresh rate limited');
+                return;
+            }
+            if ($response['status'] === 429) {
+                $this->emitError(ErrorCode::RATE_LIMITED, 'Config refresh rate limited');
 
-            return;
-        }
-        if ($response['status'] < 200 || $response['status'] >= 300 || !is_array($response['body'])) {
-            $this->emitError(ErrorCode::NETWORK, 'Config refresh failed: HTTP ' . $response['status']);
+                return;
+            }
+            if ($response['status'] < 200 || $response['status'] >= 300 || !is_array($response['body'])) {
+                $this->emitError(ErrorCode::NETWORK, 'Config refresh failed: HTTP ' . $response['status']);
 
-            return;
-        }
+                return;
+            }
 
-        $this->applyConfigResponse($response['body']);
-        if ($this->rulesStore->isReady()) {
-            $this->cacheAdapter->saveRulesSnapshot($this->apiKey, $this->rulesStore->toSnapshot());
+            $this->applyConfigResponse($response['body']);
+            if ($this->rulesStore->isReady()) {
+                $this->cacheAdapter->saveRulesSnapshot($this->apiKey, $this->rulesStore->toSnapshot());
+            }
+        } catch (\Throwable $e) {
+            $this->emitError(ErrorCode::NETWORK, $e->getMessage());
         }
     }
 
@@ -344,13 +348,29 @@ final class FlagmintClient
     }
 
     /**
-     * POST buffered events to `/evaluator/events` and clear the buffer.
+     * POST buffered events to `/evaluator/events` and clear the buffer on success.
      *
-     * @return bool False when the HTTP call failed (events already drained)
+     * On non-2xx or transport failure, events are pushed back so a later flush
+     * (or queue retry) can try again.
+     *
+     * @return bool False when the HTTP call failed (events re-buffered)
      */
     public function flushEvents(): bool
     {
-        return $this->flushEventBatch($this->eventBuffer->drain());
+        $events = $this->eventBuffer->drain();
+        try {
+            $ok = $this->flushEventBatch($events);
+        } catch (\Throwable $e) {
+            $this->emitError(ErrorCode::NETWORK, $e->getMessage());
+            $ok = false;
+        }
+        if (!$ok) {
+            foreach ($events as $event) {
+                $this->eventBuffer->push($event);
+            }
+        }
+
+        return $ok;
     }
 
     /**
