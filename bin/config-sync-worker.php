@@ -12,7 +12,7 @@ declare(strict_types=1);
 
 require dirname(__DIR__) . '/vendor/autoload.php';
 
-use Flagmint\Client;
+use Flagmint\FlagmintClient;
 use Flagmint\ConfigSync\ConfigSyncWorker;
 
 $apiKey = getenv('FLAGMINT_SDK_KEY') ?: getenv('FLAGMINT_API_KEY') ?: '';
@@ -22,7 +22,7 @@ if ($apiKey === '') {
 }
 
 $interval = (int) (getenv('FLAGMINT_REFRESH_INTERVAL') ?: 30);
-$client = new Client([
+$client = new FlagmintClient([
     'apiKey' => $apiKey,
     'env' => getenv('FLAGMINT_ENV') ?: 'production',
 ]);

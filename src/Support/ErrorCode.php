@@ -5,10 +5,10 @@ declare(strict_types=1);
 namespace Flagmint\Support;
 
 /**
- * Stable `code` strings passed to Client `onError` callbacks.
+ * Stable `code` strings passed to FlagmintClient `onError` callbacks.
  *
  * ```php
- * new Client([
+ * new FlagmintClient([
  *     'apiKey' => $key,
  *     'onError' => function (array $err): void {
  *         // $err = ['code' => ErrorCode::AUTH, 'message' => '…']

@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace Flagmint\Tests\Unit;
 
-use Flagmint\Client;
+use Flagmint\FlagmintClient;
 use Flagmint\ConfigSync\ConfigSyncWorker;
 use Flagmint\Tests\Integration\MockFlagmintHttp;
 use GuzzleHttp\Psr7\HttpFactory;
@@ -19,7 +19,7 @@ final class ConfigSyncWorkerTest extends TestCase
         /** @var array<string, mixed> $full */
         $full = json_decode((string) file_get_contents($path), true, 512, JSON_THROW_ON_ERROR);
         $factory = new HttpFactory();
-        $client = new Client([
+        $client = new FlagmintClient([
             'apiKey' => 'fm_test',
             'httpClient' => new MockFlagmintHttp([$full]),
             'requestFactory' => $factory,

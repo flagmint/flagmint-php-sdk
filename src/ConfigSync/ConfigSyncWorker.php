@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace Flagmint\ConfigSync;
 
-use Flagmint\Client;
+use Flagmint\FlagmintClient;
 
 /**
  * Long-running loop that periodically refreshes config-sync rules.
@@ -15,7 +15,7 @@ use Flagmint\Client;
  * CLI entrypoint: `packages/php-sdk/bin/config-sync-worker.php`.
  *
  * ```php
- * $client = new Client(['apiKey' => $key]);
+ * $client = new FlagmintClient(['apiKey' => $key]);
  * $client->ready();
  * (new ConfigSyncWorker($client, intervalSeconds: 30))->run();
  * ```
@@ -26,13 +26,13 @@ final class ConfigSyncWorker
     private $onTick;
 
     /**
-     * @param Client $client Bootstrapped Flagmint client (shared cache adapter recommended)
+     * @param FlagmintClient $client Bootstrapped FlagmintClient (shared cache adapter recommended)
      * @param int $intervalSeconds Seconds to sleep between refreshes
-     * @param callable|null $onTick Optional `fn (Client $client): void` after each refresh
+     * @param callable|null $onTick Optional `fn (FlagmintClient $client): void` after each refresh
      * @param int|null $maxIterations Cap iterations for tests; `null` runs forever
      */
     public function __construct(
-        private readonly Client $client,
+        private readonly FlagmintClient $client,
         private readonly int $intervalSeconds = 30,
         ?callable $onTick = null,
         private readonly ?int $maxIterations = null,

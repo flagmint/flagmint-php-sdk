@@ -13,7 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **Core client** (`Flagmint\Client`) with `ready()`, `refresh()`, `isEnabled()`,
+- **Core client** (`Flagmint\FlagmintClient`) with `ready()`, `refresh()`, `isEnabled()`,
   `getFlag()`, typed readers (`bool`, `string`, `number`, `json`), `track()`,
   `trackError()`, and `flushEvents()`.
 - **Local evaluation** via REST config-sync (`POST /auth/asl-handshake` with ECDH,

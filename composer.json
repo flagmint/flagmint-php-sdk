@@ -2,7 +2,6 @@
   "name": "flagmint/php-sdk",
   "description": "Flagmint PHP SDK — local evaluation with REST config-sync",
   "type": "library",
-  "version": "0.1.0",
   "license": "BSD-3-Clause",
   "authors": [
     {

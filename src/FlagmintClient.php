@@ -25,7 +25,7 @@ use Psr\Http\Message\StreamFactoryInterface;
  * Typical flow in a long-lived process or at request boot:
  *
  * ```php
- * $client = new Client(['apiKey' => getenv('FLAGMINT_SDK_KEY')]);
+ * $client = new FlagmintClient(['apiKey' => getenv('FLAGMINT_SDK_KEY')]);
  * $client->ready(); // handshake + pull rules (never throws)
  *
  * if ($client->isEnabled('new-checkout', [
@@ -47,7 +47,7 @@ use Psr\Http\Message\StreamFactoryInterface;
  * **Context:** always pass per-call context under concurrency (PHP-FPM). Do not
  * rely on a single shared mutable context across requests.
  */
-final class Client
+final class FlagmintClient
 {
     private string $apiKey;
 
@@ -88,7 +88,7 @@ final class Client
      *   streamFactory?: StreamFactoryInterface,
      *   onError?: callable(array{code: string, message: string}): void,
      *   env?: string
-     * } $options Client options:
+     * } $options FlagmintClient options:
      *   - `apiKey` (required): environment SDK key (`fm_…`)
      *   - `enableFlagmint`: when false, all reads return fallbacks (offline / kill switch)
      *   - `env`: `production` | `staging` | `local` — picks default API hosts
@@ -104,7 +104,7 @@ final class Client
     {
         $apiKey = $options['apiKey'] ?? '';
         if (!is_string($apiKey) || $apiKey === '') {
-            throw new \InvalidArgumentException('Flagmint Client requires a non-empty apiKey');
+            throw new \InvalidArgumentException('FlagmintClient requires a non-empty apiKey');
         }
 
         $cache = $options['cacheAdapter'] ?? new ArrayMemoryAdapter();
@@ -350,7 +350,20 @@ final class Client
      */
     public function flushEvents(): bool
     {
-        $events = $this->eventBuffer->drain();
+        return $this->flushEventBatch($this->eventBuffer->drain());
+    }
+
+    /**
+     * POST a pre-built event batch as-is (preserves timestamps / kind / properties).
+     *
+     * Used by queue workers that drained the buffer in another process — avoids
+     * re-recording through {@see track()} which would mint new timestamps.
+     *
+     * @param list<array<string, mixed>> $events
+     * @return bool False when the HTTP call failed
+     */
+    public function flushEventBatch(array $events): bool
+    {
         if ($events === [] || !$this->enableFlagmint) {
             return true;
         }

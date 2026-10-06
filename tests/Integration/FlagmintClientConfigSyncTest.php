@@ -5,11 +5,11 @@ declare(strict_types=1);
 namespace Flagmint\Tests\Integration;
 
 use Flagmint\Cache\ArrayMemoryAdapter;
-use Flagmint\Client;
+use Flagmint\FlagmintClient;
 use GuzzleHttp\Psr7\HttpFactory;
 use PHPUnit\Framework\TestCase;
 
-final class ClientConfigSyncTest extends TestCase
+final class FlagmintClientConfigSyncTest extends TestCase
 {
     public function testHandshakeConfigLocalEvalAndCacheHydrate(): void
     {
@@ -18,7 +18,7 @@ final class ClientConfigSyncTest extends TestCase
         $adapter = new ArrayMemoryAdapter();
         $factory = new HttpFactory();
 
-        $client = new Client([
+        $client = new FlagmintClient([
             'apiKey' => 'fm_test_key',
             'cacheAdapter' => $adapter,
             'httpClient' => $http,
@@ -36,7 +36,7 @@ final class ClientConfigSyncTest extends TestCase
         // "Restart": new client, same adapter, no network needed for eval if lease valid —
         // still needs refresh for MAC, but hydrate makes version available.
         $http2 = new MockFlagmintHttp([$full]);
-        $client2 = new Client([
+        $client2 = new FlagmintClient([
             'apiKey' => 'fm_test_key',
             'cacheAdapter' => $adapter,
             'httpClient' => $http2,
@@ -57,7 +57,7 @@ final class ClientConfigSyncTest extends TestCase
         $http = new MockFlagmintHttp([$full, $delta]);
         $factory = new HttpFactory();
 
-        $client = new Client([
+        $client = new FlagmintClient([
             'apiKey' => 'fm_test_key',
             'httpClient' => $http,
             'requestFactory' => $factory,
@@ -75,7 +75,7 @@ final class ClientConfigSyncTest extends TestCase
         $full = $this->fixture('config/full_config.json');
         $http = new MockFlagmintHttp([$full]);
         $factory = new HttpFactory();
-        $client = new Client([
+        $client = new FlagmintClient([
             'apiKey' => 'fm_test_key',
             'httpClient' => $http,
             'requestFactory' => $factory,
@@ -93,7 +93,7 @@ final class ClientConfigSyncTest extends TestCase
     public function testEnableFlagmintFalseUsesFallback(): void
     {
         $factory = new HttpFactory();
-        $client = new Client([
+        $client = new FlagmintClient([
             'apiKey' => 'fm_test_key',
             'enableFlagmint' => false,
             'httpClient' => new MockFlagmintHttp([]),
@@ -115,7 +115,7 @@ final class ClientConfigSyncTest extends TestCase
             }
         };
         $factory = new HttpFactory();
-        $client = new Client([
+        $client = new FlagmintClient([
             'apiKey' => 'bad',
             'httpClient' => $http,
             'requestFactory' => $factory,

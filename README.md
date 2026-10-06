@@ -8,9 +8,9 @@ composer require guzzlehttp/guzzle # PSR-18 client (or provide your own)
 ```
 
 ```php
-use Flagmint\Client;
+use Flagmint\FlagmintClient;
 
-$client = new Client([
+$client = new FlagmintClient([
     'apiKey' => getenv('FLAGMINT_SDK_KEY'),
 ]);
 $client->ready();

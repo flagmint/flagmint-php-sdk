@@ -17,14 +17,14 @@ namespace Flagmint\Cache;
  *     prefix: 'flagmint:rules:',
  * );
  *
- * $client = new \Flagmint\Client([
+ * $client = new \Flagmint\FlagmintClient([
  *     'apiKey' => $key,
  *     'cacheAdapter' => $adapter,
  * ]);
  * ```
  *
  * Keys are `prefix + sha256(apiKey)`. A safety TTL of lease expiry + 5 minutes
- * is applied for Redis eviction; the Client still fail-closes on lease expiry.
+ * is applied for Redis eviction; FlagmintClient still fail-closes on lease expiry.
  */
 final class RedisAdapter implements CacheAdapter
 {

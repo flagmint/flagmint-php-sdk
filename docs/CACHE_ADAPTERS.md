@@ -14,7 +14,7 @@ interface CacheAdapter {
 | `ArrayMemoryAdapter` | php-sdk | Default for plain PHP |
 | `RedisAdapter` | php-sdk | Requires `predis/predis` |
 | `LaravelCacheAdapter` | laravel | Default for Laravel apps |
-| Custom | yours | Implement the interface and pass to `Client` |
+| Custom | yours | Implement the interface and pass to `FlagmintClient` |
 
 Lease `expiresAt` is the fail-closed source of truth. Redis may set a safety TTL slightly beyond the lease for eviction only.
 

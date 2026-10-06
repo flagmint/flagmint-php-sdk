@@ -6,7 +6,7 @@ namespace Flagmint\Tests\Unit;
 
 use Flagmint\Cache\ArrayMemoryAdapter;
 use Flagmint\Cache\RulesSnapshot;
-use Flagmint\Client;
+use Flagmint\FlagmintClient;
 use PHPUnit\Framework\TestCase;
 
 final class ArrayMemoryAdapterTest extends TestCase
@@ -25,7 +25,7 @@ final class ArrayMemoryAdapterTest extends TestCase
     public function testClientRejectsNonAdapter(): void
     {
         $this->expectException(\InvalidArgumentException::class);
-        new Client([
+        new FlagmintClient([
             'apiKey' => 'fm_test',
             'cacheAdapter' => new \stdClass(),
             'enableFlagmint' => false,

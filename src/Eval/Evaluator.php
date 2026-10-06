@@ -8,7 +8,7 @@ namespace Flagmint\Eval;
  * In-process flag evaluator (ported from Go `evaluate` / JS `evaluateSdkFlag`).
  *
  * Applies kill-switch, targeting rules (custom + segment), and rollouts against
- * a flattened evaluation context. Used by {@see \Flagmint\Client} after rules
+ * a flattened evaluation context. Used by {@see \Flagmint\FlagmintClient} after rules
  * are loaded — you normally call `$client->bool()` / `getFlag()` instead.
  */
 final class Evaluator

@@ -8,10 +8,10 @@ namespace Flagmint\Cache;
  * Persistence hook for compiled rules + lease metadata.
  *
  * Implement this to share one rules snapshot across PHP-FPM workers (Redis,
- * Memcached, files, etc.). Pass your instance into {@see \Flagmint\Client}:
+ * Memcached, files, etc.). Pass your instance into {@see \Flagmint\FlagmintClient}:
  *
  * ```php
- * $client = new Client([
+ * $client = new FlagmintClient([
  *     'apiKey' => $key,
  *     'cacheAdapter' => new MyRedisAdapter($redis),
  * ]);
@@ -19,7 +19,7 @@ namespace Flagmint\Cache;
  *
  * **Lease vs TTL:** {@see RulesSnapshot::$expiresAt} is the fail-closed source
  * of truth. Adapters may set a storage TTL slightly past the lease for eviction,
- * but {@see \Flagmint\Client} must still refuse local eval after expiry.
+ * but {@see \Flagmint\FlagmintClient} must still refuse local eval after expiry.
  *
  * Built-ins: {@see ArrayMemoryAdapter} (default), {@see RedisAdapter}.
  * Laravel apps use {@see \Flagmint\Laravel\Cache\LaravelCacheAdapter} by default.
@@ -29,7 +29,7 @@ interface CacheAdapter
     /**
      * Load the last saved rules snapshot for this SDK key, or null on miss.
      *
-     * Called during Client construction so a new worker can hydrate before the
+     * Called during FlagmintClient construction so a new worker can hydrate before the
      * first network refresh completes.
      *
      * @param string $apiKey Environment SDK key (used as the logical cache key)

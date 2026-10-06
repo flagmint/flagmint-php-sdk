@@ -13,7 +13,7 @@ use Flagmint\Cache\RulesSnapshot;
  * a lease renews expiry but must **not** advance the version bookmark when the
  * server version disagrees (that would skip catch-up).
  *
- * Most apps never touch this directly — use {@see \Flagmint\Client}.
+ * Most apps never touch this directly — use {@see \Flagmint\FlagmintClient}.
  */
 final class RulesStore
 {
