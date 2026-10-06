@@ -190,6 +190,93 @@ final class FlagmintClientConfigSyncTest extends TestCase
         $this->assertSame(1, $client->getEventBuffer()->count());
     }
 
+    public function testSdkIdentityOnHandshakeConfigAndEvents(): void
+    {
+        $full = $this->fixture('config/full_config.json');
+        $http = new MockFlagmintHttp([$full]);
+        $factory = new HttpFactory();
+        $client = new FlagmintClient([
+            'apiKey' => 'fm_test_key',
+            'httpClient' => $http,
+            'requestFactory' => $factory,
+            'streamFactory' => $factory,
+            'restEndpoint' => 'https://example.test',
+            'handshakeEndpoint' => 'https://example.test/auth/asl-handshake',
+            'wrapperInfo' => ['name' => 'flagmint-laravel', 'version' => '0.1.1'],
+            'sdkVersion' => '0.1.1-test',
+        ]);
+
+        $this->assertTrue($client->ready());
+
+        $handshake = $http->getLastHandshakeBody();
+        $this->assertNotNull($handshake);
+        $this->assertSame('0.1.1-test', $handshake['sdkVersion'] ?? null);
+        $this->assertSame('php', $handshake['platform'] ?? null);
+        $this->assertSame('flagmint-laravel', $handshake['wrapperName'] ?? null);
+        $this->assertSame('0.1.1', $handshake['wrapperVersion'] ?? null);
+        $this->assertSame('0.1.1-test', $http->getLastHandshakeHeaders()['x-flagmint-sdk-version'] ?? null);
+
+        $this->assertStringContainsString('sdkVersion=0.1.1-test', $http->getLastConfigUrl());
+        $this->assertStringContainsString('wrapperName=flagmint-laravel', $http->getLastConfigUrl());
+        $this->assertSame('php', $http->getLastConfigHeaders()['x-flagmint-platform'] ?? null);
+
+        $client->track('new-checkout', ['eventName' => 'click']);
+        $this->assertTrue($client->flushEvents());
+        $this->assertSame('0.1.1-test', $http->getLastEventsHeaders()['x-flagmint-sdk-version'] ?? null);
+    }
+
+    public function testEvaluationReportsWhenAnalyticsEnabled(): void
+    {
+        $full = $this->fixture('config/full_config.json');
+        $full['flags'][0]['analytics_enabled'] = true;
+        $http = new MockFlagmintHttp([$full]);
+        $factory = new HttpFactory();
+        $client = new FlagmintClient([
+            'apiKey' => 'fm_test_key',
+            'httpClient' => $http,
+            'requestFactory' => $factory,
+            'streamFactory' => $factory,
+            'restEndpoint' => 'https://example.test',
+            'handshakeEndpoint' => 'https://example.test/auth/asl-handshake',
+        ]);
+        $this->assertTrue($client->ready());
+
+        $ctx = ['kind' => 'user', 'key' => 'u_analytics'];
+        $first = $client->bool('new-checkout', false, $ctx);
+        $second = $client->bool('new-checkout', false, $ctx);
+        $this->assertSame($first, $second);
+
+        $this->assertTrue($client->flushEvents());
+        $body = $http->getLastEventsBody();
+        $this->assertNotNull($body);
+        $events = $body['events'] ?? [];
+        $this->assertCount(1, $events);
+        $this->assertSame('evaluation', $events[0]['kind']);
+        $this->assertSame('new-checkout', $events[0]['flagKey']);
+        $this->assertSame(2, $events[0]['count']);
+        $this->assertSame('u_analytics', $events[0]['userKey']);
+        $this->assertSame($first, $events[0]['variationValue']);
+    }
+
+    public function testNoEvaluationReportWhenAnalyticsDisabled(): void
+    {
+        $full = $this->fixture('config/full_config.json');
+        $http = new MockFlagmintHttp([$full]);
+        $factory = new HttpFactory();
+        $client = new FlagmintClient([
+            'apiKey' => 'fm_test_key',
+            'httpClient' => $http,
+            'requestFactory' => $factory,
+            'streamFactory' => $factory,
+            'restEndpoint' => 'https://example.test',
+            'handshakeEndpoint' => 'https://example.test/auth/asl-handshake',
+        ]);
+        $this->assertTrue($client->ready());
+        $this->assertTrue($client->bool('new-checkout', false, ['key' => 'u1']));
+        $events = $client->drainPendingEvents();
+        $this->assertSame([], $events);
+    }
+
     /**
      * @return array<string, mixed>
      */

@@ -6,6 +6,9 @@ namespace Flagmint\Eval;
 
 /**
  * Targeting condition matching (ported from Go evaluate/rules.go).
+ *
+ * Attribute lookup mirrors JS `getContextAttribute` so dashboard rules with bare
+ * names (`plan`) resolve against kind-prefixed multi context (`organization.plan`).
  */
 final class ConditionMatcher
 {
@@ -18,8 +21,8 @@ final class ConditionMatcher
         $attribute = (string) ($condition['attribute'] ?? '');
         $operator = (string) ($condition['operator'] ?? '');
         $value = $condition['value'] ?? null;
-        $attrPresent = array_key_exists($attribute, $attrs);
-        $attrVal = $attrPresent ? $attrs[$attribute] : null;
+        $attrVal = self::getContextAttribute($attrs, $attribute);
+        $attrPresent = $attrVal !== null || self::attributeExists($attrs, $attribute);
 
         return match ($operator) {
             'exists' => $attrPresent && $attrVal !== null,
@@ -36,6 +39,60 @@ final class ConditionMatcher
             'nin' => !$attrPresent || !self::inList($attrVal, $value),
             default => false,
         };
+    }
+
+    /**
+     * Resolve a targeting attribute against a flat context (JS `getContextAttribute`).
+     *
+     * Tries exact key, case-insensitive exact, then bare / `custom.` / `user.` /
+     * `organization.` candidates so multi-context rules keep working.
+     *
+     * @param array<string, mixed> $context Flat attribute map
+     * @param string $attribute Rule attribute from the dashboard
+     * @return mixed|null Resolved value, or null when absent
+     */
+    public static function getContextAttribute(array $context, string $attribute): mixed
+    {
+        if ($attribute === '') {
+            return null;
+        }
+
+        if (array_key_exists($attribute, $context)) {
+            return $context[$attribute];
+        }
+
+        $keys = array_keys($context);
+        $lower = strtolower($attribute);
+        foreach ($keys as $key) {
+            if (is_string($key) && strtolower($key) === $lower) {
+                return $context[$key];
+            }
+        }
+
+        $bare = str_contains($attribute, '.')
+            ? substr($attribute, (int) strrpos($attribute, '.') + 1)
+            : $attribute;
+
+        $candidates = [
+            $bare,
+            'custom.' . $bare,
+            'user.' . $bare,
+            'organization.' . $bare,
+        ];
+
+        foreach ($candidates as $candidate) {
+            if (array_key_exists($candidate, $context)) {
+                return $context[$candidate];
+            }
+            $candidateLower = strtolower($candidate);
+            foreach ($keys as $key) {
+                if (is_string($key) && strtolower($key) === $candidateLower) {
+                    return $context[$key];
+                }
+            }
+        }
+
+        return null;
     }
 
     /**
@@ -66,6 +123,45 @@ final class ConditionMatcher
         }
 
         return true;
+    }
+
+    /**
+     * Whether an attribute resolves (including aliases), even when the value is null.
+     *
+     * @param array<string, mixed> $context
+     * @param string $attribute
+     */
+    private static function attributeExists(array $context, string $attribute): bool
+    {
+        if ($attribute === '') {
+            return false;
+        }
+        if (array_key_exists($attribute, $context)) {
+            return true;
+        }
+
+        $resolved = self::getContextAttribute($context, $attribute);
+        if ($resolved !== null) {
+            return true;
+        }
+
+        // Distinguish "missing" from "present null" for aliased keys.
+        $bare = str_contains($attribute, '.')
+            ? substr($attribute, (int) strrpos($attribute, '.') + 1)
+            : $attribute;
+        foreach ([$attribute, $bare, 'custom.' . $bare, 'user.' . $bare, 'organization.' . $bare] as $candidate) {
+            if (array_key_exists($candidate, $context)) {
+                return true;
+            }
+            $candidateLower = strtolower($candidate);
+            foreach (array_keys($context) as $key) {
+                if (is_string($key) && strtolower($key) === $candidateLower) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
     }
 
     /**

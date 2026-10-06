@@ -78,6 +78,18 @@ final class SignPayload
      */
     private static function sortValue(mixed $value): mixed
     {
+        // Empty JSON objects must stay `{}` (see {@see \Flagmint\Support\Json}).
+        // Non-empty stdClass must contribute sorted properties — collapsing them
+        // to `{}` would leave the HMAC unchanged if someone mutated those fields.
+        if ($value instanceof \stdClass) {
+            $vars = get_object_vars($value);
+            if ($vars === []) {
+                return new \stdClass();
+            }
+
+            return self::sortValue($vars);
+        }
+
         if (!is_array($value)) {
             return $value;
         }

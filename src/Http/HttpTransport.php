@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Flagmint\Http;
 
+use Flagmint\Support\Json;
 use Psr\Http\Client\ClientInterface;
 use Psr\Http\Message\RequestFactoryInterface;
 use Psr\Http\Message\StreamFactoryInterface;
@@ -42,7 +43,7 @@ final class HttpTransport
         $decoded = null;
         if ($raw !== '') {
             try {
-                $decoded = json_decode($raw, true, 512, JSON_THROW_ON_ERROR);
+                $decoded = Json::decodePreservingEmptyObjects($raw);
             } catch (\Throwable) {
                 $decoded = null;
             }

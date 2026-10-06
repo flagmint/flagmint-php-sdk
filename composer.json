@@ -29,7 +29,10 @@
   "autoload": {
     "psr-4": {
       "Flagmint\\": "src/"
-    }
+    },
+    "files": [
+      "src/Support/functions.php"
+    ]
   },
   "autoload-dev": {
     "psr-4": {
