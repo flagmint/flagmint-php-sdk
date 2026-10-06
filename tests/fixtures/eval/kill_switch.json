@@ -1,0 +1,19 @@
+{
+  "flag": {
+    "key": "kill-me",
+    "type": "boolean",
+    "is_active": false,
+    "default_value": true,
+    "off_variation_id": "off",
+    "targeting_rules": [],
+    "variations": [
+      { "id": "on", "value": true },
+      { "id": "off", "value": false }
+    ],
+    "rollouts": {},
+    "analytics_enabled": false
+  },
+  "context": { "kind": "user", "key": "u1" },
+  "segments": {},
+  "expected": false
+}

@@ -1,0 +1,25 @@
+{
+  "type": "delta",
+  "fromVersion": 3,
+  "toVersion": 4,
+  "compiledAt": 1700000001000,
+  "expiresAt": 4102444800000,
+  "upserts": [
+    {
+      "key": "new-checkout",
+      "type": "boolean",
+      "is_active": false,
+      "default_value": false,
+      "off_variation_id": "off",
+      "targeting_rules": [],
+      "variations": [
+        { "id": "on", "value": true },
+        { "id": "off", "value": false }
+      ],
+      "rollouts": {},
+      "analytics_enabled": false
+    }
+  ],
+  "deletes": [],
+  "segments": {}
+}

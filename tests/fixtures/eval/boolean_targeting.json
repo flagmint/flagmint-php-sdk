@@ -1,0 +1,29 @@
+{
+  "flag": {
+    "key": "premium-feature",
+    "type": "boolean",
+    "is_active": true,
+    "default_value": false,
+    "targeting_rules": [
+      {
+        "id": "r1",
+        "kind": "custom",
+        "order_index": 0,
+        "logical_op": "and",
+        "conditions": [
+          { "attribute": "plan", "operator": "eq", "value": "premium" }
+        ],
+        "variation_id": "on"
+      }
+    ],
+    "variations": [
+      { "id": "on", "value": true },
+      { "id": "off", "value": false }
+    ],
+    "rollouts": {},
+    "analytics_enabled": false
+  },
+  "context": { "kind": "user", "key": "u1", "plan": "premium" },
+  "segments": {},
+  "expected": true
+}
