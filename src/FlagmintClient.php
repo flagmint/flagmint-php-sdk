@@ -15,7 +15,7 @@ use Flagmint\Events\EventBuffer;
 use Flagmint\Http\HttpTransport;
 use Flagmint\Support\ErrorCode;
 use Flagmint\Support\SdkIdentity;
-use function Flagmint\Support\userKeyFromContext;
+use Flagmint\Support\UserKey;
 use GuzzleHttp\Client as GuzzleClient;
 use GuzzleHttp\Psr7\HttpFactory;
 use Psr\Http\Client\ClientInterface;
@@ -575,7 +575,7 @@ final class FlagmintClient
             return;
         }
 
-        $this->evaluationReports->record($flagKey, $variationValue, userKeyFromContext($context));
+        $this->evaluationReports->record($flagKey, $variationValue, UserKey::fromContext($context));
     }
 
     /**
@@ -701,24 +701,32 @@ final class FlagmintClient
         }
     }
 
-    /**
-     * @return array{rest: string, handshake: string}
-     */
-    private static function endpointsForEnv(string $env): array
-    {
-        return match ($env) {
-            'staging' => [
-                'rest' => 'https://staging-api.flagmint.com',
-                'handshake' => 'https://staging-api.flagmint.com/auth/asl-handshake',
-            ],
-            'local' => [
-                'rest' => 'http://localhost:3000',
-                'handshake' => 'http://localhost:3000/auth/asl-handshake',
-            ],
-            default => [
-                'rest' => 'https://api.flagmint.com',
-                'handshake' => 'https://api.flagmint.com/auth/asl-handshake',
-            ],
-        };
-    }
+/**
+ * Default API hosts by `env`.
+ *
+ * - `stream.flagmint.com` / `staging-stream…` → **SSE only** (live flag pushes)
+ * - `api.flagmint.com` / `staging-api…` → REST handshake, config-sync, events
+ *
+ * PHP never connects to the stream host; override with `restEndpoint` /
+ * `handshakeEndpoint` when needed.
+ *
+ * @return array{rest: string, handshake: string}
+ */
+private static function endpointsForEnv(string $env): array
+{
+    return match ($env) {
+        'staging' => [
+            'rest' => 'https://staging-api.flagmint.com',
+            'handshake' => 'https://staging-api.flagmint.com/auth/asl-handshake',
+        ],
+        'local' => [
+            'rest' => 'http://localhost:3000',
+            'handshake' => 'http://localhost:3000/auth/asl-handshake',
+        ],
+        default => [
+            'rest' => 'https://api.flagmint.com',
+            'handshake' => 'https://api.flagmint.com/auth/asl-handshake',
+        ],
+    };
+}
 }
