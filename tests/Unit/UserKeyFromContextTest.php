@@ -4,24 +4,33 @@ declare(strict_types=1);
 
 namespace Flagmint\Tests\Unit;
 
+use Flagmint\Support\UserKey;
 use PHPUnit\Framework\TestCase;
-use function Flagmint\Support\userKeyFromContext;
 
 final class UserKeyFromContextTest extends TestCase
 {
     public function testPrefersNestedUserKeyThenUserKeyThenKey(): void
     {
-        $this->assertSame('nested', userKeyFromContext([
+        $this->assertSame('nested', UserKey::fromContext([
             'user' => ['key' => 'nested'],
             'userKey' => 'flat',
             'key' => 'top',
         ]));
-        $this->assertSame('flat', userKeyFromContext([
+        $this->assertSame('flat', UserKey::fromContext([
             'userKey' => 'flat',
             'key' => 'top',
         ]));
-        $this->assertSame('top', userKeyFromContext(['key' => 'top']));
-        $this->assertNull(userKeyFromContext(['user' => ['key' => '']]));
-        $this->assertNull(userKeyFromContext(null));
+        $this->assertSame('top', UserKey::fromContext(['key' => 'top']));
+        $this->assertNull(UserKey::fromContext(['user' => ['key' => '']]));
+        $this->assertNull(UserKey::fromContext(null));
+    }
+
+    public function testMultiContextUsesNestedUserKey(): void
+    {
+        $this->assertSame('u1', UserKey::fromContext([
+            'kind' => 'multi',
+            'user' => ['kind' => 'user', 'key' => 'u1'],
+            'organization' => ['kind' => 'organization', 'key' => 'acme'],
+        ]));
     }
 }
