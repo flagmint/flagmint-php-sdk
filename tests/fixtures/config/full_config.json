@@ -1,0 +1,22 @@
+{
+  "type": "fullConfig",
+  "version": 3,
+  "compiledAt": 1700000000000,
+  "expiresAt": 4102444800000,
+  "flags": [
+    {
+      "key": "new-checkout",
+      "type": "boolean",
+      "is_active": true,
+      "default_value": false,
+      "targeting_rules": [],
+      "variations": [
+        { "id": "on", "value": true },
+        { "id": "off", "value": false }
+      ],
+      "rollouts": {},
+      "analytics_enabled": false
+    }
+  ],
+  "segments": {}
+}

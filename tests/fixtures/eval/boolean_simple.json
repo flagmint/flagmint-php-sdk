@@ -1,0 +1,18 @@
+{
+  "flag": {
+    "key": "new-checkout",
+    "type": "boolean",
+    "is_active": true,
+    "default_value": false,
+    "targeting_rules": [],
+    "variations": [
+      { "id": "on", "value": true },
+      { "id": "off", "value": false }
+    ],
+    "rollouts": {},
+    "analytics_enabled": false
+  },
+  "context": { "kind": "user", "key": "u1" },
+  "segments": {},
+  "expected": true
+}
