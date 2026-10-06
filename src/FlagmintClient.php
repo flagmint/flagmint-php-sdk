@@ -10,9 +10,12 @@ use Flagmint\Cache\RulesSnapshot;
 use Flagmint\ConfigSync\AslEcdh;
 use Flagmint\ConfigSync\RulesStore;
 use Flagmint\Eval\Evaluator;
+use Flagmint\Events\EvaluationReportBuffer;
 use Flagmint\Events\EventBuffer;
 use Flagmint\Http\HttpTransport;
 use Flagmint\Support\ErrorCode;
+use Flagmint\Support\SdkIdentity;
+use function Flagmint\Support\userKeyFromContext;
 use GuzzleHttp\Client as GuzzleClient;
 use GuzzleHttp\Psr7\HttpFactory;
 use Psr\Http\Client\ClientInterface;
@@ -65,12 +68,18 @@ final class FlagmintClient
 
     private EventBuffer $eventBuffer;
 
+    private EvaluationReportBuffer $evaluationReports;
+
+    private SdkIdentity $identity;
+
     private HttpTransport $transport;
 
     /** @var callable|null */
     private $onError;
 
     private bool $ready = false;
+
+    private bool $shutdownRegistered = false;
 
     private ?string $sessionId = null;
 
@@ -87,7 +96,9 @@ final class FlagmintClient
      *   requestFactory?: RequestFactoryInterface,
      *   streamFactory?: StreamFactoryInterface,
      *   onError?: callable(array{code: string, message: string}): void,
-     *   env?: string
+     *   env?: string,
+     *   wrapperInfo?: array{name?: string, version?: string},
+     *   sdkVersion?: string
      * } $options FlagmintClient options:
      *   - `apiKey` (required): environment SDK key (`fm_…`)
      *   - `enableFlagmint`: when false, all reads return fallbacks (offline / kill switch)
@@ -96,6 +107,8 @@ final class FlagmintClient
      *   - `cacheAdapter`: {@see CacheAdapter}; defaults to {@see ArrayMemoryAdapter}
      *   - `httpClient` + PSR-17 factories: inject mocks in tests; otherwise Guzzle is used
      *   - `onError`: `fn (array{code: string, message: string}): void` for soft failures
+     *   - `wrapperInfo`: optional `{name, version}` for Laravel / other wrappers
+     *   - `sdkVersion`: override packaged SDK version (tests)
      *
      * @throws \InvalidArgumentException When `apiKey` is empty or `cacheAdapter` is not a CacheAdapter
      * @throws \RuntimeException When no HTTP client is provided and Guzzle is not installed
@@ -112,6 +125,15 @@ final class FlagmintClient
             throw new \InvalidArgumentException('cacheAdapter must implement Flagmint\\Cache\\CacheAdapter');
         }
 
+        $wrapper = is_array($options['wrapperInfo'] ?? null) ? $options['wrapperInfo'] : [];
+        $this->identity = new SdkIdentity(
+            wrapperName: isset($wrapper['name']) && is_string($wrapper['name']) ? $wrapper['name'] : null,
+            wrapperVersion: isset($wrapper['version']) && is_string($wrapper['version']) ? $wrapper['version'] : null,
+            sdkVersion: isset($options['sdkVersion']) && is_string($options['sdkVersion'])
+                ? $options['sdkVersion']
+                : null,
+        );
+
         $this->apiKey = $apiKey;
         $this->enableFlagmint = (bool) ($options['enableFlagmint'] ?? true);
         $this->cacheAdapter = $cache;
@@ -119,6 +141,7 @@ final class FlagmintClient
         $this->rulesStore = new RulesStore();
         $this->evaluator = new Evaluator();
         $this->eventBuffer = new EventBuffer();
+        $this->evaluationReports = new EvaluationReportBuffer();
 
         $env = (string) ($options['env'] ?? 'production');
         $defaults = self::endpointsForEnv($env);
@@ -144,6 +167,8 @@ final class FlagmintClient
         if ($snapshot instanceof RulesSnapshot) {
             $this->rulesStore->hydrateFromSnapshot($snapshot);
         }
+
+        $this->registerShutdownFlush();
     }
 
     /**
@@ -197,16 +222,19 @@ final class FlagmintClient
                 ? null
                 : $this->rulesStore->getState()->version;
 
-            $query = ['sessionId' => $this->sessionId];
+            $query = array_merge(
+                ['sessionId' => $this->sessionId],
+                $this->identity->toQueryParams(),
+            );
             if ($sinceVersion !== null && $sinceVersion > 0) {
                 $query['sinceVersion'] = (string) $sinceVersion;
             }
             $url = $this->restEndpoint . '/evaluator/v2/flags/config?' . http_build_query($query);
 
-            $response = $this->transport->request('GET', $url, [
+            $response = $this->transport->request('GET', $url, array_merge([
                 'x-api-key' => $this->apiKey,
                 'Accept' => 'application/json',
-            ]);
+            ], $this->identity->toHeaders()));
 
             if ($response['status'] === 401 || $response['status'] === 403) {
                 $this->emitError(ErrorCode::AUTH, 'Config refresh unauthorized: HTTP ' . $response['status']);
@@ -224,7 +252,7 @@ final class FlagmintClient
                 return;
             }
 
-            $this->applyConfigResponse($response['body']);
+            $this->applyConfigResponse(self::unwrapApiPayload($response['body']));
             if ($this->rulesStore->isReady()) {
                 $this->cacheAdapter->saveRulesSnapshot($this->apiKey, $this->rulesStore->toSnapshot());
             }
@@ -317,39 +345,73 @@ final class FlagmintClient
      * Buffer a custom analytics event (`kind: custom`) for later flush.
      *
      * Does not hit the network until {@see flushEvents()} (or the Laravel queue job).
+     * Shape matches the evaluator TrackEvents schema (`eventName` + optional `extra`).
      *
      * @param string $flagKey Related flag key (dashboard attribution)
-     * @param array<string, mixed> $properties Arbitrary JSON-serializable props
+     * @param array<string, mixed> $properties Use `eventName` (or `name`) for the metric;
+     *     remaining keys go in `extra`. Optional `userKey` / `variationValue` overrides.
      */
     public function track(string $flagKey, array $properties = []): void
     {
-        $this->eventBuffer->push([
+        $eventName = $properties['eventName'] ?? $properties['name'] ?? 'custom';
+        unset($properties['eventName'], $properties['name']);
+        $userKey = $properties['userKey'] ?? null;
+        unset($properties['userKey']);
+        $variationValue = $properties['variationValue'] ?? null;
+        unset($properties['variationValue']);
+
+        $event = [
             'flagKey' => $flagKey,
             'kind' => 'custom',
-            'properties' => $properties,
-            'timestamp' => (int) (microtime(true) * 1000),
-        ]);
+            'eventName' => is_string($eventName) && $eventName !== '' ? $eventName : 'custom',
+            'timestamp' => gmdate('Y-m-d\TH:i:s.000\Z'),
+        ];
+        if (is_string($userKey) && $userKey !== '') {
+            $event['userKey'] = $userKey;
+        }
+        if ($variationValue !== null) {
+            $event['variationValue'] = $variationValue;
+        }
+        if ($properties !== []) {
+            $event['extra'] = $properties;
+        }
+        $this->eventBuffer->push($event);
     }
 
     /**
      * Buffer an application error event (`kind: error`) for later flush.
      *
      * @param string $flagKey Related flag key
-     * @param array<string, mixed> $properties e.g. `['message' => '…', 'code' => '…']`
+     * @param array<string, mixed> $properties e.g. `['message' => '…']` (stored as `extra`)
      */
     public function trackError(string $flagKey, array $properties = []): void
     {
-        $this->eventBuffer->push([
+        $userKey = $properties['userKey'] ?? null;
+        unset($properties['userKey']);
+        $variationValue = $properties['variationValue'] ?? null;
+        unset($properties['variationValue']);
+
+        $event = [
             'flagKey' => $flagKey,
             'kind' => 'error',
-            'properties' => $properties,
-            'timestamp' => (int) (microtime(true) * 1000),
-        ]);
+            'timestamp' => gmdate('Y-m-d\TH:i:s.000\Z'),
+        ];
+        if (is_string($userKey) && $userKey !== '') {
+            $event['userKey'] = $userKey;
+        }
+        if ($variationValue !== null) {
+            $event['variationValue'] = $variationValue;
+        }
+        if ($properties !== []) {
+            $event['extra'] = $properties;
+        }
+        $this->eventBuffer->push($event);
     }
 
     /**
      * POST buffered events to `/evaluator/events` and clear the buffer on success.
      *
+     * Promotes coalesced call-site evaluation reports into the batch first.
      * On non-2xx or transport failure, events are pushed back so a later flush
      * (or queue retry) can try again.
      *
@@ -357,7 +419,7 @@ final class FlagmintClient
      */
     public function flushEvents(): bool
     {
-        $events = $this->eventBuffer->drain();
+        $events = $this->drainPendingEvents();
         try {
             $ok = $this->flushEventBatch($events);
         } catch (\Throwable $e) {
@@ -371,6 +433,20 @@ final class FlagmintClient
         }
 
         return $ok;
+    }
+
+    /**
+     * Drain evaluation reports + buffered track events for queue dispatch or POST.
+     *
+     * @return list<array<string, mixed>>
+     */
+    public function drainPendingEvents(): array
+    {
+        foreach ($this->evaluationReports->drainAsEvents() as $event) {
+            $this->eventBuffer->push($event);
+        }
+
+        return $this->eventBuffer->drain();
     }
 
     /**
@@ -391,7 +467,10 @@ final class FlagmintClient
         $response = $this->transport->request(
             'POST',
             $this->restEndpoint . '/evaluator/events',
-            ['x-api-key' => $this->apiKey, 'Accept' => 'application/json'],
+            array_merge([
+                'x-api-key' => $this->apiKey,
+                'Accept' => 'application/json',
+            ], $this->identity->toHeaders()),
             ['events' => $events],
         );
 
@@ -414,10 +493,20 @@ final class FlagmintClient
 
     /**
      * Access the in-process event buffer (advanced / Laravel queue drain).
+     *
+     * Prefer {@see drainPendingEvents()} so coalesced evaluation reports are included.
      */
     public function getEventBuffer(): EventBuffer
     {
         return $this->eventBuffer;
+    }
+
+    /**
+     * SDK identity used on handshake / config / events (version, platform, wrapper).
+     */
+    public function getIdentity(): SdkIdentity
+    {
+        return $this->identity;
     }
 
     /**
@@ -430,6 +519,9 @@ final class FlagmintClient
 
     /**
      * Shared local-eval path for typed readers.
+     *
+     * When the flag has `analytics_enabled`, queues a coalesced `kind: evaluation`
+     * report (dashboard Evaluations / unique users). Does not consume billing quota.
      *
      * @param array<string, mixed>|null $context
      */
@@ -451,12 +543,60 @@ final class FlagmintClient
         }
 
         try {
-            return $this->evaluator->evaluate($flag, $context, $this->rulesStore->getState()->segments);
+            $value = $this->evaluator->evaluate($flag, $context, $this->rulesStore->getState()->segments);
+            $this->queueEvaluationReport($flagKey, $flag, $value, $context);
+
+            return $value;
         } catch (\Throwable $e) {
             $this->emitError(ErrorCode::INTERNAL, $e->getMessage());
 
             return $fallback;
         }
+    }
+
+    /**
+     * Queue a call-site evaluation report when analytics is on for the flag.
+     *
+     * @param string $flagKey
+     * @param array<string, mixed> $flag
+     * @param mixed $variationValue
+     * @param array<string, mixed>|null $context
+     */
+    private function queueEvaluationReport(
+        string $flagKey,
+        array $flag,
+        mixed $variationValue,
+        ?array $context,
+    ): void {
+        if (($flag['analytics_enabled'] ?? false) !== true) {
+            return;
+        }
+
+        $this->evaluationReports->record($flagKey, $variationValue, userKeyFromContext($context));
+        if ($this->evaluationReports->size() >= EvaluationReportBuffer::MAX_BATCH) {
+            $this->flushEvents();
+        }
+    }
+
+    /**
+     * Flush pending evaluation reports + events at request/process end (FPM-safe).
+     */
+    private function registerShutdownFlush(): void
+    {
+        if ($this->shutdownRegistered || !$this->enableFlagmint) {
+            return;
+        }
+        $this->shutdownRegistered = true;
+        register_shutdown_function(function (): void {
+            if ($this->evaluationReports->isEmpty() && $this->eventBuffer->count() === 0) {
+                return;
+            }
+            try {
+                $this->flushEvents();
+            } catch (\Throwable) {
+                // Soft: never break the host app on analytics flush.
+            }
+        });
     }
 
     private function handshake(): void
@@ -467,15 +607,22 @@ final class FlagmintClient
         $response = $this->transport->request(
             'POST',
             $this->handshakeEndpoint,
-            ['x-api-key' => $this->apiKey, 'Accept' => 'application/json'],
-            ['clientPublicKey' => $pair['publicKeyHex']],
+            array_merge([
+                'x-api-key' => $this->apiKey,
+                'Accept' => 'application/json',
+            ], $this->identity->toHeaders()),
+            array_merge(
+                ['clientPublicKey' => $pair['publicKeyHex']],
+                $this->identity->toQueryParams(),
+            ),
         );
 
         if ($response['status'] < 200 || $response['status'] >= 300 || !is_array($response['body'])) {
             throw new \RuntimeException('ASL handshake failed: HTTP ' . $response['status']);
         }
 
-        $body = $response['body'];
+        // Production API wraps payloads as { statusCode, message, data: { … } }.
+        $body = self::unwrapApiPayload($response['body']);
         $sessionId = $body['sessionId'] ?? null;
         $serverPublicKey = $body['serverPublicKey'] ?? null;
         $salt = $body['salt'] ?? null;
@@ -492,6 +639,24 @@ final class FlagmintClient
         $this->rulesStore->setMacKey($macKey);
         $this->sessionId = $sessionId;
         AslEcdh::wipe($this->privateKey);
+    }
+
+    /**
+     * Unwrap Flagmint API envelopes `{ statusCode, message, data }` when present.
+     *
+     * @param array<string, mixed> $body Decoded JSON body
+     * @return array<string, mixed>
+     */
+    private static function unwrapApiPayload(array $body): array
+    {
+        if (isset($body['data']) && is_array($body['data'])) {
+            /** @var array<string, mixed> $data */
+            $data = $body['data'];
+
+            return $data;
+        }
+
+        return $body;
     }
 
     /**

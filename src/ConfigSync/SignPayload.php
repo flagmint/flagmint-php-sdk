@@ -78,6 +78,11 @@ final class SignPayload
      */
     private static function sortValue(mixed $value): mixed
     {
+        // Empty JSON objects must stay `{}` (see {@see \Flagmint\Support\Json}).
+        if ($value instanceof \stdClass) {
+            return new \stdClass();
+        }
+
         if (!is_array($value)) {
             return $value;
         }

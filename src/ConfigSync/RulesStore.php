@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Flagmint\ConfigSync;
 
 use Flagmint\Cache\RulesSnapshot;
+use Flagmint\Support\Json;
 
 /**
  * Owns the live {@see RulesState}: verify signatures, apply lease/fullConfig/deltas.
@@ -133,7 +134,10 @@ final class RulesStore
             return ['ok' => false, 'reason' => 'bad_signature'];
         }
 
-        return $this->reduce($payload, $nowMs);
+        /** @var array<string, mixed> $normalized */
+        $normalized = Json::toArrays($payload);
+
+        return $this->reduce($normalized, $nowMs);
     }
 
     /**

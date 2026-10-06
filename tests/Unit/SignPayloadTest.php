@@ -33,4 +33,12 @@ final class SignPayloadTest extends TestCase
         $this->assertTrue(SignPayload::isExpired(1000, 1000));
         $this->assertFalse(SignPayload::isExpired(2000, 1000));
     }
+
+    public function testEmptyObjectCanonicalizesAsObjectNotArray(): void
+    {
+        $withObject = ['type' => 'fullConfig', 'segments' => new \stdClass()];
+        $withArray = ['type' => 'fullConfig', 'segments' => []];
+        $this->assertSame('{"segments":{},"type":"fullConfig"}', SignPayload::canonicalize($withObject));
+        $this->assertSame('{"segments":[],"type":"fullConfig"}', SignPayload::canonicalize($withArray));
+    }
 }

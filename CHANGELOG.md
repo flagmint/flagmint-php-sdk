@@ -9,6 +9,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.1.1] — 2026-10-06
+
+### Added
+
+- **SDK identity telemetry** on handshake, config refresh, and event POST:
+  `sdkVersion`, `platform=php`, `wrapperName` / `wrapperVersion` (query + headers).
+  Optional constructor `wrapperInfo` / `sdkVersion` for wrappers and tests.
+- **Call-site evaluation reports** (`kind: evaluation`) when a flag has
+  `analytics_enabled`. Coalesced per flag key (count) and flushed via
+  `flushEvents()` / `drainPendingEvents()` or process shutdown.
+- `drainPendingEvents()` for Laravel queue workers so evaluation reports are
+  included alongside `track` / `trackError` events.
+
+### Fixed
+
+- **Context flatten parity with FF-EU / JS**: nested `custom` under user/org/multi
+  becomes `custom.<key>` (not `user.custom`); multi merges only user + organization
+  with kind prefixes. Condition matching resolves bare attributes against
+  `user.*` / `organization.*` / `custom.*` (JS `getContextAttribute`).
+
 ## [0.1.0] — 2026-10-06
 
 ### Added
@@ -32,4 +52,5 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   → local eval and optional Redis multi-worker tests.
 - BSD-3-Clause license.
 
+[0.1.1]: https://github.com/flagmint/flagmint-php-sdk/releases/tag/v0.1.1
 [0.1.0]: https://github.com/flagmint/flagmint-php-sdk/releases/tag/v0.1.0
