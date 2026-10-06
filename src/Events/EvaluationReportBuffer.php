@@ -20,6 +20,11 @@ final class EvaluationReportBuffer
     /**
      * Record one local evaluation for later flush as `kind: evaluation`.
      *
+     * Existing flag keys keep coalescing (count / variation / userKey). New flag
+     * keys are dropped once {@see MAX_BATCH} distinct keys are pending — callers
+     * must flush via shutdown or {@see \Flagmint\FlagmintClient::flushEvents()},
+     * never a sync network call from the evaluate path.
+     *
      * @param string $flagKey
      * @param mixed $variationValue Served value for variation breakdown
      * @param string|null $userKey Unique-user key from context
@@ -35,6 +40,10 @@ final class EvaluationReportBuffer
             $this->pending[$flagKey]['variationValue'] = $variationValue;
             $this->pending[$flagKey]['userKey'] = $userKey;
 
+            return;
+        }
+
+        if (count($this->pending) >= self::MAX_BATCH) {
             return;
         }
 

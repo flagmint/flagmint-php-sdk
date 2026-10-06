@@ -41,4 +41,36 @@ final class SignPayloadTest extends TestCase
         $this->assertSame('{"segments":{},"type":"fullConfig"}', SignPayload::canonicalize($withObject));
         $this->assertSame('{"segments":[],"type":"fullConfig"}', SignPayload::canonicalize($withArray));
     }
+
+    public function testNonEmptyStdClassPropertiesAreIncludedInSignature(): void
+    {
+        $secret = random_bytes(32);
+        $flag = new \stdClass();
+        $flag->key = 'checkout';
+        $flag->is_active = true;
+
+        $body = [
+            'type' => 'fullConfig',
+            'version' => 1,
+            'flags' => [$flag],
+            'segments' => new \stdClass(),
+        ];
+        $body['signature'] = SignPayload::sign($body, $secret);
+        $this->assertTrue(SignPayload::verify($body, $secret));
+
+        $tampered = clone $flag;
+        $tampered->is_active = false;
+        $body['flags'] = [$tampered];
+        $this->assertFalse(SignPayload::verify($body, $secret));
+
+        $canonical = SignPayload::canonicalize([
+            'flags' => [$flag],
+            'segments' => new \stdClass(),
+            'type' => 'fullConfig',
+            'version' => 1,
+        ]);
+        $this->assertStringContainsString('"is_active":true', $canonical);
+        $this->assertStringContainsString('"key":"checkout"', $canonical);
+        $this->assertStringContainsString('"segments":{}', $canonical);
+    }
 }

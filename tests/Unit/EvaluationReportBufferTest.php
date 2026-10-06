@@ -42,4 +42,28 @@ final class EvaluationReportBufferTest extends TestCase
         $buffer->record('', true, 'u1');
         $this->assertTrue($buffer->isEmpty());
     }
+
+    public function testStopsAcceptingNewKeysAtMaxBatchButStillCoalescesExisting(): void
+    {
+        $buffer = new EvaluationReportBuffer();
+        for ($i = 0; $i < EvaluationReportBuffer::MAX_BATCH; $i++) {
+            $buffer->record('flag-' . $i, true, 'u1');
+        }
+        $this->assertSame(EvaluationReportBuffer::MAX_BATCH, $buffer->size());
+
+        $buffer->record('flag-overflow', false, 'u2');
+        $this->assertSame(EvaluationReportBuffer::MAX_BATCH, $buffer->size());
+
+        $buffer->record('flag-0', false, 'u3');
+        $events = $buffer->drainAsEvents();
+        $this->assertCount(EvaluationReportBuffer::MAX_BATCH, $events);
+        $byFlag = [];
+        foreach ($events as $event) {
+            $byFlag[$event['flagKey']] = $event;
+        }
+        $this->assertArrayNotHasKey('flag-overflow', $byFlag);
+        $this->assertSame(2, $byFlag['flag-0']['count']);
+        $this->assertFalse($byFlag['flag-0']['variationValue']);
+        $this->assertSame('u3', $byFlag['flag-0']['userKey']);
+    }
 }

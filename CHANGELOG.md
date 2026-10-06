@@ -28,6 +28,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   becomes `custom.<key>` (not `user.custom`); multi merges only user + organization
   with kind prefixes. Condition matching resolves bare attributes against
   `user.*` / `organization.*` / `custom.*` (JS `getContextAttribute`).
+- **SignPayload**: non-empty `stdClass` objects contribute sorted properties to the
+  HMAC (empty `{}` still preserved). Evaluation reports no longer trigger a sync
+  HTTP flush from `getFlag` / `bool` — they wait for shutdown or explicit flush,
+  and new flag keys stop once the in-process batch is full.
 
 ## [0.1.0] — 2026-10-06
 

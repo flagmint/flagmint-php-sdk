@@ -557,6 +557,9 @@ final class FlagmintClient
     /**
      * Queue a call-site evaluation report when analytics is on for the flag.
      *
+     * Never flushes over the network — flag reads stay local. Reports wait for
+     * process shutdown or an explicit {@see flushEvents()} / {@see drainPendingEvents()}.
+     *
      * @param string $flagKey
      * @param array<string, mixed> $flag
      * @param mixed $variationValue
@@ -573,9 +576,6 @@ final class FlagmintClient
         }
 
         $this->evaluationReports->record($flagKey, $variationValue, userKeyFromContext($context));
-        if ($this->evaluationReports->size() >= EvaluationReportBuffer::MAX_BATCH) {
-            $this->flushEvents();
-        }
     }
 
     /**
